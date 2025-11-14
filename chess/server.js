@@ -20,15 +20,9 @@ const httpServer = createServer(app)
 const io = new Server(httpServer)
 
 app.use((req, res, next) => {
-    if (
-        req.headers.accept.includes('text/html') ||
-        req.url.includes('worker') ||
-        req.url.includes('stockfish.js')
-    ) {
-        res.header('Cross-Origin-Opener-Policy', 'same-origin')
-        res.header('Cross-Origin-Embedder-Policy', 'require-corp')
-        res.header('Cross-Origin-Resource-Policy', 'cross-origin')
-    }
+    // Security headers removed to fix loading issues in development
+    // These headers require HTTPS to function properly and cause
+    // Cross-Origin-Opener-Policy errors on HTTP connections
     next()
 })
 

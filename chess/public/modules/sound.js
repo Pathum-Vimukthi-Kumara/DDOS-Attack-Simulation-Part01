@@ -1,11 +1,11 @@
 function player() {
-    const path = `${location.pathname === '/' ? '' : '../'}assets/audios/lichess/`
+    const path = `${location.pathname === '/' ? '' : '../'}assets/audios/`
     const audios = {
-        move: new Audio(path + 'move.ogg'),
-        capture: new Audio(path + 'capture.ogg'),
-        castle: new Audio(path + 'move.ogg'),
-        start: new Audio(path + 'end.ogg'),
-        end: new Audio(path + 'end.ogg'),
+        move: new Audio(path + 'move.mp3'),
+        capture: new Audio(path + 'capture.mp3'),
+        castle: new Audio(path + 'castle.mp3'),
+        start: new Audio(path + 'start.mp3'),
+        end: new Audio(path + 'gameover.mp3'),
     }
 
     const vol = 1
@@ -16,23 +16,23 @@ function player() {
     audios.end.volume = vol
 
     function move() {
-        audios.move.play()
+        audios.move.play().catch(e => console.log('Audio play interrupted:', e.message))
     }
 
     function capture() {
-        audios.capture.play()
+        audios.capture.play().catch(e => console.log('Audio play interrupted:', e.message))
     }
 
     function castle() {
-        audios.castle.play()
+        audios.castle.play().catch(e => console.log('Audio play interrupted:', e.message))
     }
 
     function start() {
-        audios.start.play()
+        audios.start.play().catch(e => console.log('Audio play interrupted:', e.message))
     }
 
     function end() {
-        audios.end.play()
+        audios.end.play().catch(e => console.log('Audio play interrupted:', e.message))
     }
 
     function stop() {

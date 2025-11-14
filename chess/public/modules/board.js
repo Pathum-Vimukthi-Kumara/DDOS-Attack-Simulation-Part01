@@ -12,11 +12,12 @@ export function createBoard(appendTo = false, stopCallback, socket) {
     const board = document.createElement('div')
 
     const img = new Image()
-    img.src = location.origin + '/assets/board/skins/' + preferences.boardTheme + '.png'
+    // Load SVG first since it's most likely to exist
+    img.src = location.origin + '/assets/board/skins/' + preferences.boardTheme + '.svg'
     img.onerror = () => {
-        img.src = location.origin + '/assets/board/skins/' + preferences.boardTheme + '.jpg'
+        img.src = location.origin + '/assets/board/skins/' + preferences.boardTheme + '.png'
         img.onerror = () => {
-            img.src = location.origin + '/assets/board/skins/' + preferences.boardTheme + '.svg'
+            img.src = location.origin + '/assets/board/skins/' + preferences.boardTheme + '.jpg'
             img.onerror = () => {
                 img.src = location.origin + '/assets/board/skins/brown.svg'
                 img.onerror = () => {}
