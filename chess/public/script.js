@@ -10,7 +10,7 @@ import { ping, getColorForPing } from './modules/ping.js'
 
 import { serverDelay } from './modules/serverDelay.js'
 
-const socket = io('/')
+const socket = io('http://192.168.8.104:3000')
 
 const pingConfig = {
     good: {

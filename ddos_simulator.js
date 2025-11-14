@@ -12,7 +12,7 @@
 import { io } from 'socket.io-client';
 import http from 'http';
 
-const TARGET_URL = 'http://localhost:3000';
+const TARGET_URL = 'http://192.168.8.104:3000';
 const ATTACK_INTENSITY = {
     CONNECTIONS: 1000,        // Number of socket connections
     HTTP_REQUESTS: 2000,      // Number of HTTP requests
