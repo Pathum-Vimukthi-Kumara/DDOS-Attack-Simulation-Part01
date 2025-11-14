@@ -63,17 +63,71 @@
     window.addEventListener('error', function(event) {
         if (event.filename && event.filename.includes('stockfish.js')) {
             console.log('Stockfish error caught and handled:', event.message);
+            
+            // Handle specific WebAssembly memory errors
+            if (event.message.includes('mismatch in shared state of memory')) {
+                console.warn('WebAssembly memory compatibility issue - Stockfish disabled');
+                showMemoryCompatibilityNotification();
+            }
+            
             event.preventDefault(); // Prevent the error from breaking the page
             return true;
         }
     });
     
+    // Show specific notification for memory compatibility issues
+    function showMemoryCompatibilityNotification() {
+        const notification = document.createElement('div');
+        notification.id = 'stockfish-memory-notice';
+        notification.style.cssText = `
+            position: fixed;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #e74c3c;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 6px;
+            font-size: 13px;
+            z-index: 10001;
+            box-shadow: 0 3px 6px rgba(0,0,0,0.3);
+            max-width: 90%;
+            text-align: center;
+            font-weight: bold;
+        `;
+        notification.textContent = 'Chess engine disabled due to browser compatibility - game still playable';
+        
+        if (document.body) {
+            document.body.appendChild(notification);
+        } else {
+            document.addEventListener('DOMContentLoaded', () => {
+                document.body.appendChild(notification);
+            });
+        }
+        
+        // Auto-hide after 6 seconds
+        setTimeout(() => {
+            if (document.getElementById('stockfish-memory-notice')) {
+                notification.style.transition = 'opacity 0.8s ease';
+                notification.style.opacity = '0';
+                setTimeout(() => {
+                    if (notification.parentNode) {
+                        notification.parentNode.removeChild(notification);
+                    }
+                }, 800);
+            }
+        }, 6000);
+    }
+    
     // Override console.error temporarily to catch and handle Stockfish errors gracefully
     const originalConsoleError = console.error;
     console.error = function(...args) {
         const message = args.join(' ');
-        if (message.includes('SharedArrayBuffer') || message.includes('pthreads')) {
-            console.warn('Stockfish threading error (handled):', message);
+        if (message.includes('SharedArrayBuffer') || 
+            message.includes('pthreads') || 
+            message.includes('mismatch in shared state of memory') ||
+            message.includes('WebAssembly.RuntimeError')) {
+            console.warn('Stockfish compatibility error (handled):', message);
             return; // Don't show the error
         }
         originalConsoleError.apply(console, args);

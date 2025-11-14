@@ -385,6 +385,13 @@ function INIT_ENGINE() {
             d.preloadedImages = {}
             d.preloadedAudios = {}
             function B(a) {
+                // Handle memory mismatch errors gracefully
+                if (typeof a === 'string' && a.includes('mismatch in shared state of memory')) {
+                    console.warn('Stockfish: WebAssembly memory compatibility issue detected - running in safe mode')
+                    E('Stockfish disabled due to WebAssembly memory mismatch')
+                    return // Don't abort, just disable Stockfish
+                }
+                
                 if (d.onAbort) d.onAbort(a)
                 assert(!z)
                 E(a)
@@ -1962,10 +1969,24 @@ function INIT_ENGINE() {
                         })
                         .then(g, function (k) {
                             E('failed to asynchronously prepare wasm: ' + k)
+                            // Handle memory mismatch error gracefully
+                            if (k.toString().includes('mismatch in shared state of memory')) {
+                                E('Memory state mismatch in ArrayBuffer instantiation - Stockfish disabled')
+                                console.warn('Stockfish completely disabled due to WebAssembly memory incompatibility')
+                                return // Don't call B(k) to avoid abort
+                            }
                             B(k)
                         })
                 }
                 var e = { a: Jc }
+                
+                // Add memory to imports if we created non-shared memory
+                if (F && typeof SharedArrayBuffer === 'undefined') {
+                    e.env = e.env || {};
+                    e.env.memory = F;
+                    e.a.memory = F; // Also add to 'a' namespace
+                }
+                
                 z || Ta()
                 if (d.instantiateWasm)
                     try {
@@ -1983,6 +2004,12 @@ function INIT_ENGINE() {
                         : fetch(S, { credentials: 'same-origin' }).then(function (g) {
                               return WebAssembly.instantiateStreaming(g, e).then(b, function (k) {
                                   E('wasm streaming compile failed: ' + k)
+                                  // Check for memory mismatch error and handle gracefully
+                                  if (k.toString().includes('mismatch in shared state of memory')) {
+                                      E('Memory state mismatch detected - disabling Stockfish to prevent crashes')
+                                      console.warn('Stockfish disabled due to WebAssembly memory compatibility issues')
+                                      return { instance: null, module: null } // Return safe object
+                                  }
                                   E('falling back to ArrayBuffer instantiation')
                                   return c(b)
                               })
