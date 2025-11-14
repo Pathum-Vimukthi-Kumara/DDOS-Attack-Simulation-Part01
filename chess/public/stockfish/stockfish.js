@@ -222,7 +222,10 @@ function INIT_ENGINE() {
             function Aa(a) {
                 var b = new TextDecoder(a)
                 this.decode = function (c) {
-                    c.buffer instanceof SharedArrayBuffer && (c = new Uint8Array(c))
+                    // Check if SharedArrayBuffer exists before using instanceof
+                    if (typeof SharedArrayBuffer !== 'undefined' && c.buffer instanceof SharedArrayBuffer) {
+                        c = new Uint8Array(c)
+                    }
                     return b.decode.call(b, c)
                 }
             }
@@ -309,24 +312,36 @@ function INIT_ENGINE() {
             var Ka = d.INITIAL_MEMORY || 1073741824
             if (z) (F = d.wasmMemory), (Ia = d.buffer)
             else if (d.wasmMemory) F = d.wasmMemory
-            else if (
-                ((F = new WebAssembly.Memory({
-                    initial: Ka / 65536,
-                    maximum: Ka / 65536,
-                    shared: !0,
-                })),
-                !(F.buffer instanceof SharedArrayBuffer))
-            )
-                throw (
-                    (E(
-                        'requested a shared WebAssembly.Memory but the returned buffer is not a SharedArrayBuffer, indicating that while the browser has SharedArrayBuffer it does not have WebAssembly threads support - you may need to set a flag',
-                    ),
-                    q &&
-                        console.log(
-                            '(on node you may need: --experimental-wasm-threads --experimental-wasm-bulk-memory and also use a recent version)',
-                        ),
-                    Error('bad memory'))
-                )
+            else {
+                // Check if SharedArrayBuffer is supported before using shared memory
+                var useSharedMemory = typeof SharedArrayBuffer !== 'undefined';
+                
+                if (useSharedMemory) {
+                    try {
+                        F = new WebAssembly.Memory({
+                            initial: Ka / 65536,
+                            maximum: Ka / 65536,
+                            shared: !0,
+                        });
+                        if (!(F.buffer instanceof SharedArrayBuffer)) {
+                            throw new Error('SharedArrayBuffer not available in WebAssembly.Memory');
+                        }
+                    } catch (sharedMemError) {
+                        console.warn('Falling back to non-shared memory:', sharedMemError.message);
+                        useSharedMemory = false;
+                    }
+                }
+                
+                if (!useSharedMemory) {
+                    // Fallback to non-shared memory
+                    F = new WebAssembly.Memory({
+                        initial: Ka / 65536,
+                        maximum: Ka / 65536,
+                        shared: false,
+                    });
+                    console.log('Using non-shared WebAssembly.Memory - multi-threading disabled');
+                }
+            }
             F && (Ia = F.buffer)
             Ka = Ia.byteLength
             var Q = Ia
