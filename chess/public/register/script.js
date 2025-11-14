@@ -1,0 +1,42 @@
+'use strict'
+
+const form = document.querySelector('div.form form')
+const error = document.querySelector('div.error')
+const signInBtn = form.querySelector('button.submit')
+
+let wait = false
+
+form.onsubmit = async (e) => {
+    e.preventDefault()
+
+    if (wait) return
+    wait = true
+
+    signInBtn.innerHTML = '<div class="spinner white"></div>'
+
+    const options = {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            username: form.querySelector('input.username').value,
+            password: form.querySelector('input.password').value,
+            confirmPassword: form.querySelector('input.confirm-password').value,
+            email: form.querySelector('input.email').value,
+        }),
+    }
+
+    const response = await fetch(`${location.protocol}//${location.host}/account/register`, options)
+    const data = await response.json()
+
+    if (data.success) {
+        // Directly go to login after successful registration
+        location.href = '../login'
+        return
+    }
+
+    error.textContent = data.error
+    signInBtn.textContent = 'REGISTER'
+    wait = false
+}
