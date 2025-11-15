@@ -155,6 +155,12 @@ export function Game(gMode, playerColor, board, socket, time, puzzle, solvedCall
     const stockfish = new Worker(`${location.pathname === '/' ? '' : '.'}./stockfish/stockfish.js`)
     let uciok = false
     let nnueLoaded = false
+    // Some Stockfish builds don't print "Load eval file success: 1". Add a
+    // safe fallback so the UI doesn't spin forever.
+    let engineReadyFallback = setTimeout(() => {
+        nnueLoaded = true
+        checkLoading()
+    }, 3000)
 
     let isClicking = false
 
@@ -867,7 +873,19 @@ export function Game(gMode, playerColor, board, socket, time, puzzle, solvedCall
     //!STOCKFISH
     stockfish.onmessage = ({ data }) => {
         if (data === 'uciok') uciok = true
-        if (data === 'Load eval file success: 1') nnueLoaded = true
+        // Cover multiple possible readiness strings from different builds
+        if (
+            data === 'Load eval file success: 1' ||
+            /NNUE/i.test(data) ||
+            data === 'readyok' ||
+            /info string NNUE evaluation using/i.test(data)
+        ) {
+            nnueLoaded = true
+            if (engineReadyFallback) {
+                clearTimeout(engineReadyFallback)
+                engineReadyFallback = null
+            }
+        }
         checkLoading()
 
         if (state === states.end || state === states.start) return
