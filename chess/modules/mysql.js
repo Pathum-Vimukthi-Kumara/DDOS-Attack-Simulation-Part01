@@ -14,7 +14,11 @@ const options = {
 let con = mysql.createConnection(options.ext)
 
 con.connect((err) => {
-    if (err) throw err
+    if (err) {
+        console.log('> MySQL: connection failed, running in demo mode without database')
+        console.log('> Error:', err.message)
+        return
+    }
     console.log('> MySQL: connected')
     createTables()
 })
@@ -84,18 +88,33 @@ function tableExists(tableName) {
 
 export function mysqlQuery(...query) {
     return new Promise((resolve, reject) => {
+        if (!con || con.state === 'disconnected') {
+            console.log('> MySQL: No database connection, skipping query')
+            resolve([])
+            return
+        }
         con.query(...query, async (err, results) => {
             if (err) {
                 if (
                     err.message.includes("Can't add new command when connection is in closed state")
                 ) {
-                    await reconnect()
-                    con.query(...query, (err, results) => {
-                        if (err) reject(err)
-                        else resolve(results)
-                    })
+                    try {
+                        await reconnect()
+                        con.query(...query, (err, results) => {
+                            if (err) {
+                                console.log('> MySQL: Query failed, running without database')
+                                resolve([])
+                            } else {
+                                resolve(results)
+                            }
+                        })
+                    } catch (reconnectErr) {
+                        console.log('> MySQL: Reconnection failed, running without database')
+                        resolve([])
+                    }
                 } else {
-                    reject(err)
+                    console.log('> MySQL: Query failed, running without database')
+                    resolve([])
                 }
             } else {
                 resolve(results)
@@ -105,6 +124,10 @@ export function mysqlQuery(...query) {
 }
 
 export async function insertInto(table, valuesToInsert) {
+    if (!con || con.state === 'disconnected') {
+        console.log('> MySQL: No database connection, skipping insert')
+        return
+    }
     if (typeof valuesToInsert !== 'object') throw new Error('valuesToInsert must be an object')
     if (Array.isArray(valuesToInsert) && valuesToInsert.length === 0) return
     if (Object.keys(valuesToInsert).length === 0) return
