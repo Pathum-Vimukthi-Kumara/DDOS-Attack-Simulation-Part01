@@ -13,6 +13,43 @@ npm start
 ```
 The server runs on `http://localhost:3000`
 
+### 2.1 Play the Game (Single Player / Vs Computer)
+1. On the home page click a gamemode toggle.
+2. For Player vs Computer select skill level & thinking time, then choose a color or Random.
+3. The spinner disappears once the engine loads (usually <2s). You can then move pieces.
+
+### 2.2 Multiplayer (Direct Link)
+1. Click Create Room and choose time, rated/casual, public/private, and color.
+2. You will be shown a waiting panel with a share link. Copy or share the generated URL containing `?r=<roomId>`.
+3. Second player opens that URL and joins automatically.
+4. Game starts when both colors connected.
+
+### 2.3 Multiplayer (Matchmaking)
+1. Click Find Game to enter the queue.
+2. When a match is found the page reloads with `?r=<roomId>`.
+3. Wait briefly; board loads, timers appear, and white starts.
+
+### 2.4 Spectator
+Open any room URL after a game already started; if both seats filled you will see timers and moves but cannot interact.
+
+### 2.5 Account / Rating
+Optional: Sign in or register to enable rated Elo changes (+10 / -10 on win/loss in rated games).
+
+### 2.6 Moving Pieces
+- Drag a piece or click a piece then a highlighted destination tile.
+- Auto Flip: enable to rotate board to current side to move.
+
+### 2.7 Rematch / Draw / Resign
+- Use in‑game buttons; both players must request rematch or draw for acceptance.
+
+### Troubleshooting Stuck Loading Spinner
+If the board shows a spinner indefinitely:
+- Check browser console for errors loading `stockfish.js`.
+- Ensure you are visiting the server with the same host/port it is running on (default `:3000`).
+- Multiplayer features: if a red banner “Real-time connection failed” appears, Socket.IO could not connect. Verify the server is running and firewall allows port 3000. The page will still allow vs computer play.
+- If you created a room and never receive color assignment, second player may not have joined or connection failed.
+- Reload the page after restarting the server; stale WebSocket connections will not recover if server was killed.
+
 ### 2. Open the Website
 - Open `http://localhost:3000` in your browser
 - Notice the **green connection indicator** in the header: 🟢 Connected

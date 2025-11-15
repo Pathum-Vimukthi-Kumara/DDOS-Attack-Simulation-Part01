@@ -10,7 +10,31 @@ import { ping, getColorForPing } from './modules/ping.js'
 
 import { serverDelay } from './modules/serverDelay.js'
 
-const socket = io('http://192.168.8.104:3000')
+// Use same-origin Socket.IO endpoint instead of hardcoded LAN IP.
+// This prevents failures when the server IP changes or when accessed via hostname.
+// If you need a different origin, set window.SOCKET_URL before this script loads.
+const socket = io(typeof window !== 'undefined' && window.SOCKET_URL ? window.SOCKET_URL : undefined)
+
+socket.on('connect_error', (err) => {
+    console.error('Socket connection error:', err.message)
+    // Surface a small banner so the user knows multiplayer will not work.
+    const existing = document.querySelector('.socket-error-banner')
+    if (existing) return
+    const banner = document.createElement('div')
+    banner.className = 'socket-error-banner'
+    banner.style.position = 'fixed'
+    banner.style.top = '0'
+    banner.style.left = '0'
+    banner.style.right = '0'
+    banner.style.zIndex = '2000'
+    banner.style.background = '#660000'
+    banner.style.color = '#fff'
+    banner.style.font = '14px/1.4 sans-serif'
+    banner.style.padding = '6px 10px'
+    banner.style.textAlign = 'center'
+    banner.textContent = 'Real-time connection failed. Multiplayer features unavailable until reconnect.'
+    document.body.appendChild(banner)
+})
 
 const pingConfig = {
     good: {
