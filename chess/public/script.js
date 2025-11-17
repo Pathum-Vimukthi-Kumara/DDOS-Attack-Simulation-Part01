@@ -339,22 +339,22 @@ function startServerMonitoring() {
     serverMonitorInterval = setInterval(() => {
         const timeSinceLastResponse = Date.now() - lastServerResponse
         
-        // If no response for 8 seconds, start failure process
-        if (timeSinceLastResponse > 8000 && !serverFailureDetected) {
-            console.log('⚠️ Server appears unresponsive (8s timeout)')
-            handleServerFailure('Server not responding (8s timeout)')
+        // If no response for 15 seconds, start failure process
+        if (timeSinceLastResponse > 15000 && !serverFailureDetected) {
+            console.log('⚠️ Server appears unresponsive (15s timeout)')
+            handleServerFailure('Server not responding (15s timeout)')
         }
         
-        // If disconnected for more than 5 seconds, definitely show failure
-        if (!socket.connected && timeSinceLastResponse > 5000 && !serverFailureDetected) {
-            handleServerFailure('Server disconnected (5s timeout)')
+        // If disconnected for more than 10 seconds, definitely show failure
+        if (!socket.connected && timeSinceLastResponse > 10000 && !serverFailureDetected) {
+            handleServerFailure('Server disconnected (10s timeout)')
         }
         
         // If too many consecutive failures, force refresh
-        if (consecutiveFailures >= 3 && !serverFailureDetected) {
+        if (consecutiveFailures >= 5 && !serverFailureDetected) {
             handleServerFailure(`Multiple failures detected (${consecutiveFailures})`)
         }
-    }, 3000) // Check every 3 seconds
+    }, 10000) // Check every 10 seconds
     
     // Send ping every 4 seconds
     setInterval(() => {
@@ -369,7 +369,7 @@ function startHttpHealthCheck() {
     healthCheckInterval = setInterval(() => {
         // Only do HTTP health checks if we suspect issues
         const timeSinceLastResponse = Date.now() - lastServerResponse
-        if (timeSinceLastResponse > 6000 || !socket.connected) {
+        if (timeSinceLastResponse > 12000 || !socket.connected) {
             performHttpHealthCheck()
         }
     }, 5000)
@@ -381,7 +381,7 @@ function performHttpHealthCheck() {
     
     const healthCheck = fetch(window.location.origin + '/health', {
         method: 'GET',
-        timeout: 3000
+        timeout: 10000
     }).then(response => {
         if (response.ok) {
             console.log('✅ HTTP health check passed')
@@ -393,7 +393,7 @@ function performHttpHealthCheck() {
     }).catch(error => {
         console.log('❌ HTTP health check failed:', error.message)
         consecutiveFailures++
-        if (consecutiveFailures >= 2 && !serverFailureDetected) {
+        if (consecutiveFailures >= 4 && !serverFailureDetected) {
             handleServerFailure('HTTP health check failed: ' + error.message)
         }
     })
@@ -401,7 +401,7 @@ function performHttpHealthCheck() {
     // Fallback: If fetch takes too long, consider it a failure
     setTimeout(() => {
         consecutiveFailures++
-        if (consecutiveFailures >= 2 && !serverFailureDetected) {
+        if (consecutiveFailures >= 4 && !serverFailureDetected) {
             handleServerFailure('HTTP health check timeout')
         }
     }, 4000)
