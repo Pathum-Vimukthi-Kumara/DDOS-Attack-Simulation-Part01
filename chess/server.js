@@ -21,13 +21,62 @@ const io = new Server(httpServer)
 
 app.use((req, res, next) => {
     // Security headers removed to fix loading issues in development
-    // These headers require HTTPS to function properly and cause
-    // Cross-Origin-Opener-Policy errors on HTTP connections
+    // Attack monitoring disabled - let server crash naturally
     next()
 })
 
-app.use(express.static('public'))
+// Add memory pressure and crash vulnerability to make server crash during attacks
+let requestCount = 0
+let memoryLeakArray = []
+
+app.use((req, res, next) => {
+    requestCount++
+    
+    // Create memory pressure during high load
+    if (requestCount % 30 === 0) {
+        // Add memory leaks to cause crashes
+        for (let i = 0; i < 2000; i++) {
+            memoryLeakArray.push(new Array(1000).fill('crash-data-' + Math.random() + Date.now()))
+        }
+        console.log(`💀 Memory leak added. Total requests: ${requestCount}`)
+    }
+    
+    // Simulate processing delay under load
+    if (requestCount > 100) {
+        const delay = Math.random() * 100
+        const start = Date.now()
+        while (Date.now() - start < delay) {
+            // Busy wait to simulate server strain
+        }
+    }
+    
+    // Force crash after too many requests
+    if (requestCount > 1500) {
+        console.log('💥 Server overwhelmed - CRASHING!')
+        process.exit(1)
+    }
+    
+    next()
+})
+
+// Enable caching for static assets; heavy engine files benefit the most
+app.use('/stockfish', express.static(path.join(__dirname, 'public/stockfish'), {
+    maxAge: '30d',
+    immutable: true,
+}))
+app.use(express.static('public', { maxAge: '7d' }))
 app.use(express.json())
+
+// Simple health check endpoint for frontend monitoring
+app.get('/health', (req, res) => {
+    res.status(200).json({ 
+        status: 'ok', 
+        timestamp: Date.now(),
+        uptime: process.uptime(),
+        memory: process.memoryUsage(),
+        requests: requestCount 
+    })
+})
 
 let serverDelay = 2
 let oldServerDelay = 2
@@ -36,6 +85,82 @@ let oldConnections = 0
 
 let playing = 0
 let olfPlaying = 0
+
+// DDoS Attack Detection System (moved to line 180)
+
+
+
+
+
+// DDoS Attack Detection System
+const attackDetection = {
+    requests: [],
+    isUnderAttack: false,
+    lastAttackTime: null,
+    suspiciousIPs: new Map(),
+    blockedIPs: new Set(),
+    thresholds: {
+        requestsPerSecond: 5,     // Normal threshold (very low for testing)
+        requestsPerMinute: 20,    // Burst threshold (very low for testing)
+        suspiciousRPS: 10,        // Suspicious activity (very low for testing)
+        attackRPS: 20,            // Definite attack (very low for testing)
+        ipRequestLimit: 8         // Per IP per minute (very low for testing)
+    }
+}
+
+// Track request metrics
+function trackRequest(ip, userAgent = '') {
+    // Disabled - let attacks crash the server naturally
+    // const now = Date.now()
+    // const request = { ip, timestamp: now, userAgent }
+    // attackDetection.requests.push(request)
+    return { threatLevel: 'normal', attackType: null, rps: 0, rpm: 0, isUnderAttack: false }
+}
+
+function analyzeTraffic() {
+    // Disabled - let server crash naturally without detection
+    return {
+        threatLevel: 'normal',
+        attackType: null,
+        rps: 0,
+        rpm: 0,
+        isUnderAttack: false
+    }
+}
+
+// Helper function to generate DDoS messages
+function getDDoSMessage(attackType, threatLevel) {
+    const messages = {
+        'volumetric': {
+            'critical': 'Server under massive volumetric attack! Extreme load detected!',
+            'high': 'High-volume attack detected! Server performance may be impacted.',
+            'medium': 'Moderate traffic spike detected!'
+        },
+        'suspicious': {
+            'critical': 'Highly suspicious traffic patterns detected!',
+            'high': 'Suspicious activity detected from multiple sources!',
+            'medium': 'Unusual traffic patterns observed!'
+        },
+        'burst': {
+            'critical': 'Critical burst attack detected!',
+            'high': 'High-intensity burst traffic detected!',
+            'medium': 'Traffic burst detected!'
+        },
+        'bot': {
+            'critical': 'Massive bot attack detected!',
+            'high': 'Bot network attack in progress!',
+            'medium': 'Automated bot activity detected!'
+        },
+        'ip_flood': {
+            'critical': 'Critical IP flooding attack!',
+            'high': 'Multiple IPs flooding the server!',
+            'medium': 'IP concentration attack detected!'
+        }
+    }
+    
+    return messages[attackType]?.[threatLevel] || `${threatLevel.toUpperCase()} threat detected!`
+}
+
 setInterval(() => {
     if (serverDelay !== oldServerDelay) {
         oldServerDelay = serverDelay
@@ -49,7 +174,19 @@ setInterval(() => {
         olfPlaying = playing
         io.sockets.emit('playing', playing)
     }
-}, 5000)
+    
+    // Send current attack status to all clients
+    const now = Date.now()
+    const recentRequests = attackDetection.requests.filter(r => now - r.timestamp < 1000)
+    const currentRPS = recentRequests.length
+    
+    io.sockets.emit('attack-metrics', {
+        rps: currentRPS,
+        isUnderAttack: attackDetection.isUnderAttack,
+        threatLevel: currentRPS >= attackDetection.thresholds.suspiciousRPS ? 'high' : 'normal',
+        timestamp: now
+    })
+}, 1000) // Update every second for real-time monitoring
 
 async function getEloFromToken(token) {
     if (!token) {
@@ -296,10 +433,45 @@ function tryToFindOpponent(socketId) {
 
 io.on('connection', (socket) => {
     console.log(`> socket connected ${socket.id}`)
+    
+    // Track socket connections (monitoring disabled)
+    const clientIP = socket.handshake.headers['x-forwarded-for'] || socket.handshake.address
+    // trackRequest(clientIP, 'websocket') // Disabled
 
     socket.emit('connections', io.engine.clientsCount)
     socket.emit('playing', playing)
     socket.emit('server-delay', serverDelay ?? 2)
+    
+    // Send current attack status to new connections
+    if (attackDetection.isUnderAttack) {
+        socket.emit('ddos-status', {
+            isUnderAttack: true,
+            level: attackDetection.attackLevel,
+            metrics: {
+                connections: io.engine.clientsCount,
+                memoryPercent: Math.round((process.memoryUsage().heapUsed / process.memoryUsage().heapTotal) * 100)
+            },
+            timestamp: attackDetection.lastAttackTime
+        })
+    }
+    
+    // Handle ping/pong for connection monitoring
+    socket.on('ping', (data) => {
+        socket.emit('pong', data || Date.now())
+    })
+    
+    // Send periodic ping to client
+    const pingInterval = setInterval(() => {
+        if (socket.connected) {
+            socket.emit('ping', Date.now())
+        } else {
+            clearInterval(pingInterval)
+        }
+    }, 30000) // Every 30 seconds
+    
+    socket.on('disconnect', () => {
+        clearInterval(pingInterval)
+    })
 
     socket.on('join-room', ({ roomId, token, color }) => {
         if (games[roomId]) {

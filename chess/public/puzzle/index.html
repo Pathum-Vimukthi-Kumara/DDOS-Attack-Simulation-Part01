@@ -7,6 +7,10 @@
         <title>Puzzles - Chess</title>
         <link rel="stylesheet" href="../style.css" />
         <link rel="stylesheet" href="style.css" />
+        <!-- Preload engine resources to reduce first-interaction latency -->
+        <link rel="preload" as="fetch" href="/stockfish/stockfish.wasm" type="application/wasm" crossorigin>
+        <!-- NNUE is disabled for puzzles for faster startup; keep preload commented if enabling later -->
+        <!-- <link rel="preload" as="fetch" href="../stockfish/nn-6877cd24400e.nnue" crossorigin> -->
         <script src="../modules/stockfish-init.js"></script>
         <script type="module" src="script.js" defer></script>
         <script src="../socket.io/socket.io.js" type="text/javascript"></script>

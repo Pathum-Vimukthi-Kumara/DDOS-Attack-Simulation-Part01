@@ -10,30 +10,709 @@ import { ping, getColorForPing } from './modules/ping.js'
 
 import { serverDelay } from './modules/serverDelay.js'
 
-// Use same-origin Socket.IO endpoint instead of hardcoded LAN IP.
-// This prevents failures when the server IP changes or when accessed via hostname.
-// If you need a different origin, set window.SOCKET_URL before this script loads.
-const socket = io(typeof window !== 'undefined' && window.SOCKET_URL ? window.SOCKET_URL : undefined)
+// Reverted to previous hardcoded socket endpoint as requested
+const socket = io('http://192.168.8.104:3000')
 
-socket.on('connect_error', (err) => {
-    console.error('Socket connection error:', err.message)
-    // Surface a small banner so the user knows multiplayer will not work.
-    const existing = document.querySelector('.socket-error-banner')
-    if (existing) return
-    const banner = document.createElement('div')
-    banner.className = 'socket-error-banner'
-    banner.style.position = 'fixed'
-    banner.style.top = '0'
-    banner.style.left = '0'
-    banner.style.right = '0'
-    banner.style.zIndex = '2000'
-    banner.style.background = '#660000'
-    banner.style.color = '#fff'
-    banner.style.font = '14px/1.4 sans-serif'
-    banner.style.padding = '6px 10px'
-    banner.style.textAlign = 'center'
-    banner.textContent = 'Real-time connection failed. Multiplayer features unavailable until reconnect.'
-    document.body.appendChild(banner)
+// DDoS Attack Warning System
+let attackWarningActive = false
+let autoRefreshTimer = null
+let isServerUnderAttack = false
+let refreshCountdown = 0
+let serverMonitorInterval = null
+let lastServerResponse = Date.now()
+let serverFailureDetected = false
+let connectionAttempts = 0
+let maxConnectionAttempts = 3
+let refreshOnNextError = false
+let healthCheckInterval = null
+let consecutiveFailures = 0
+let attackMetrics = { rps: 0, isUnderAttack: false, threatLevel: 'normal' }
+
+// Create attack warning overlay
+function createAttackWarning(data) {
+    // Remove existing warning
+    const existing = document.getElementById('ddos-warning')
+    if (existing) existing.remove()
+    
+    isServerUnderAttack = true
+    
+    const warning = document.createElement('div')
+    warning.id = 'ddos-warning'
+    warning.innerHTML = `
+        <div class="ddos-warning-content">
+            <div class="ddos-warning-header">
+                <span class="ddos-warning-icon">🚨</span>
+                <h2>DDOS ATTACK DETECTED</h2>
+                <span class="ddos-warning-icon">🚨</span>
+            </div>
+            <div class="ddos-warning-body">
+                <p class="ddos-message">${data.message}</p>
+                <div class="ddos-metrics">
+                    <div class="metric">
+                        <span class="label">Attack Type:</span>
+                        <span class="value">${data.type.toUpperCase()}</span>
+                    </div>
+                    <div class="metric">
+                        <span class="label">Threat Level:</span>
+                        <span class="value threat-${data.level}">${data.level.toUpperCase()}</span>
+                    </div>
+                    <div class="metric">
+                        <span class="label">Current RPS:</span>
+                        <span class="value">${data.rps}</span>
+                    </div>
+                    <div class="metric">
+                        <span class="label">Requests/Min:</span>
+                        <span class="value">${data.rpm}</span>
+                    </div>
+                </div>
+                <div class="ddos-warning-time">
+                    Attack detected at: ${new Date(data.timestamp).toLocaleTimeString()}
+                </div>
+                <div class="ddos-refresh-info">
+                    🔄 Auto-refreshing page in <span id="refresh-countdown">5</span> seconds...
+                    <br><button onclick="window.location.reload()" style="margin-top:10px;padding:5px 15px;background:#ff4757;color:white;border:none;border-radius:4px;cursor:pointer;">Refresh Now</button>
+                </div>
+            </div>
+        </div>
+    `
+    
+    // Add styles
+    warning.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.9);
+        z-index: 10000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        animation: ddosWarningSlideIn 0.5s ease-out;
+    `
+    
+    document.body.appendChild(warning)
+    attackWarningActive = true
+    
+    // Start auto-refresh countdown
+    startAutoRefreshCountdown(5)
+    
+    // Add CSS for the warning
+    if (!document.getElementById('ddos-warning-styles')) {
+        const style = document.createElement('style')
+        style.id = 'ddos-warning-styles'
+        style.textContent = `
+            @keyframes ddosWarningSlideIn {
+                from { opacity: 0; transform: scale(0.8); }
+                to { opacity: 1; transform: scale(1); }
+            }
+            
+            @keyframes ddosPulse {
+                0%, 100% { transform: scale(1); }
+                50% { transform: scale(1.05); }
+            }
+            
+            .ddos-warning-content {
+                background: linear-gradient(135deg, #ff4757, #ff3838);
+                border: 3px solid #fff;
+                border-radius: 20px;
+                padding: 30px;
+                max-width: 600px;
+                width: 90%;
+                box-shadow: 0 20px 60px rgba(255, 71, 87, 0.3);
+                animation: ddosPulse 2s infinite;
+            }
+            
+            .ddos-warning-header {
+                text-align: center;
+                margin-bottom: 20px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 15px;
+            }
+            
+            .ddos-warning-header h2 {
+                color: white;
+                margin: 0;
+                font-size: 28px;
+                font-weight: bold;
+                text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+                letter-spacing: 2px;
+            }
+            
+            .ddos-warning-icon {
+                font-size: 32px;
+                animation: ddosIconBounce 1s infinite;
+            }
+            
+            @keyframes ddosIconBounce {
+                0%, 100% { transform: translateY(0); }
+                50% { transform: translateY(-10px); }
+            }
+            
+            .ddos-message {
+                color: white;
+                font-size: 18px;
+                text-align: center;
+                margin: 20px 0;
+                font-weight: 500;
+            }
+            
+            .ddos-metrics {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 15px;
+                margin: 20px 0;
+                background: rgba(255,255,255,0.1);
+                padding: 20px;
+                border-radius: 10px;
+            }
+            
+            .metric {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                color: white;
+                font-size: 14px;
+            }
+            
+            .metric .label {
+                font-weight: 500;
+                opacity: 0.9;
+            }
+            
+            .metric .value {
+                font-weight: bold;
+                font-size: 16px;
+            }
+            
+            .threat-critical {
+                color: #ffff00 !important;
+                text-shadow: 0 0 10px #ffff00;
+                animation: ddosGlow 1s infinite alternate;
+            }
+            
+            .threat-high {
+                color: #ffa500 !important;
+            }
+            
+            .threat-medium {
+                color: #87ceeb !important;
+            }
+            
+            @keyframes ddosGlow {
+                from { text-shadow: 0 0 5px #ffff00; }
+                to { text-shadow: 0 0 20px #ffff00, 0 0 30px #ffff00; }
+            }
+            
+            .ddos-warning-time {
+                text-align: center;
+                color: rgba(255,255,255,0.8);
+                font-size: 12px;
+                margin-top: 15px;
+                font-style: italic;
+            }
+        `
+        document.head.appendChild(style)
+    }
+}
+
+// Create attack stopped notification
+function showAttackStopped(data) {
+    const existing = document.getElementById('ddos-warning')
+    if (existing) existing.remove()
+    
+    attackWarningActive = false
+    
+    // Show brief "attack stopped" message
+    const notification = document.createElement('div')
+    notification.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        background: #2ecc71;
+        color: white;
+        padding: 15px 25px;
+        border-radius: 10px;
+        font-weight: bold;
+        z-index: 10000;
+        box-shadow: 0 5px 15px rgba(46, 204, 113, 0.3);
+        animation: slideInRight 0.5s ease-out;
+    `
+    notification.innerHTML = `
+        ✅ Attack Stopped<br>
+        <small>Duration: ${Math.round(data.duration / 1000)}s</small>
+    `
+    
+    document.body.appendChild(notification)
+    
+    setTimeout(() => {
+        notification.style.transition = 'all 0.5s ease-out'
+        notification.style.opacity = '0'
+        notification.style.transform = 'translateX(100%)'
+        setTimeout(() => notification.remove(), 500)
+    }, 3000)
+    
+    // Add animation style if not exists
+    if (!document.getElementById('slide-animation-style')) {
+        const style = document.createElement('style')
+        style.id = 'slide-animation-style'
+        style.textContent = `
+            @keyframes slideInRight {
+                from { transform: translateX(100%); opacity: 0; }
+                to { transform: translateX(0); opacity: 1; }
+            }
+        `
+        document.head.appendChild(style)
+    }
+}
+
+// Auto-refresh countdown function
+function startAutoRefreshCountdown(seconds) {
+    clearTimeout(autoRefreshTimer)
+    refreshCountdown = seconds
+    
+    // Update countdown display
+    const countdownElement = document.getElementById('refresh-countdown')
+    if (countdownElement) {
+        countdownElement.textContent = refreshCountdown
+    }
+    
+    // Start countdown interval
+    const countdownInterval = setInterval(() => {
+        refreshCountdown--
+        const element = document.getElementById('refresh-countdown')
+        if (element) {
+            element.textContent = refreshCountdown
+        }
+        
+        if (refreshCountdown <= 0) {
+            clearInterval(countdownInterval)
+            console.log('🔄 Auto-refreshing page due to DDoS attack...')
+            window.location.reload()
+        }
+    }, 1000)
+    
+    // Set main refresh timer as backup
+    autoRefreshTimer = setTimeout(() => {
+        clearInterval(countdownInterval)
+        window.location.reload()
+    }, seconds * 1000)
+}
+
+// Server monitoring and failure detection
+function startServerMonitoring() {
+    console.log('🔍 Starting aggressive frontend server monitoring...')
+    
+    // Monitor socket connection status
+    socket.on('connect', () => {
+        lastServerResponse = Date.now()
+        serverFailureDetected = false
+        connectionAttempts = 0
+        consecutiveFailures = 0
+        console.log('✅ Connected to server')
+        hideServerFailureWarning()
+    })
+    
+    socket.on('disconnect', (reason) => {
+        console.log('🔌 Disconnected from server:', reason)
+        handleServerDisconnection(reason)
+    })
+    
+    socket.on('connect_error', (error) => {
+        console.log('❌ Connection error:', error.message)
+        consecutiveFailures++
+        handleServerFailure('Connection failed: ' + error.message)
+    })
+    
+    // Any successful response resets failure detection
+    socket.on('connections', () => { lastServerResponse = Date.now(); consecutiveFailures = 0; })
+    socket.on('playing', () => { lastServerResponse = Date.now(); consecutiveFailures = 0; })
+    socket.on('server-delay', () => { lastServerResponse = Date.now(); consecutiveFailures = 0; })
+    socket.on('pong', () => { lastServerResponse = Date.now(); consecutiveFailures = 0; })
+    
+    // Start aggressive health checking with HTTP requests
+    startHttpHealthCheck()
+    
+    // Monitor for server responsiveness every 3 seconds (aggressive)
+    serverMonitorInterval = setInterval(() => {
+        const timeSinceLastResponse = Date.now() - lastServerResponse
+        
+        // If no response for 8 seconds, start failure process
+        if (timeSinceLastResponse > 8000 && !serverFailureDetected) {
+            console.log('⚠️ Server appears unresponsive (8s timeout)')
+            handleServerFailure('Server not responding (8s timeout)')
+        }
+        
+        // If disconnected for more than 5 seconds, definitely show failure
+        if (!socket.connected && timeSinceLastResponse > 5000 && !serverFailureDetected) {
+            handleServerFailure('Server disconnected (5s timeout)')
+        }
+        
+        // If too many consecutive failures, force refresh
+        if (consecutiveFailures >= 3 && !serverFailureDetected) {
+            handleServerFailure(`Multiple failures detected (${consecutiveFailures})`)
+        }
+    }, 3000) // Check every 3 seconds
+    
+    // Send ping every 4 seconds
+    setInterval(() => {
+        if (socket.connected) {
+            socket.emit('ping')
+        }
+    }, 4000)
+}
+
+// HTTP-based health checking (independent of WebSocket)
+function startHttpHealthCheck() {
+    healthCheckInterval = setInterval(() => {
+        // Only do HTTP health checks if we suspect issues
+        const timeSinceLastResponse = Date.now() - lastServerResponse
+        if (timeSinceLastResponse > 6000 || !socket.connected) {
+            performHttpHealthCheck()
+        }
+    }, 5000)
+}
+
+// Perform HTTP health check to detect server crashes
+function performHttpHealthCheck() {
+    console.log('🏥 Performing HTTP health check...')
+    
+    const healthCheck = fetch(window.location.origin + '/health', {
+        method: 'GET',
+        timeout: 3000
+    }).then(response => {
+        if (response.ok) {
+            console.log('✅ HTTP health check passed')
+            lastServerResponse = Date.now()
+            consecutiveFailures = 0
+        } else {
+            throw new Error(`HTTP ${response.status}`)
+        }
+    }).catch(error => {
+        console.log('❌ HTTP health check failed:', error.message)
+        consecutiveFailures++
+        if (consecutiveFailures >= 2 && !serverFailureDetected) {
+            handleServerFailure('HTTP health check failed: ' + error.message)
+        }
+    })
+    
+    // Fallback: If fetch takes too long, consider it a failure
+    setTimeout(() => {
+        consecutiveFailures++
+        if (consecutiveFailures >= 2 && !serverFailureDetected) {
+            handleServerFailure('HTTP health check timeout')
+        }
+    }, 4000)
+}
+
+// Handle server disconnection
+function handleServerDisconnection(reason) {
+    consecutiveFailures++
+    
+    // Common disconnect reasons that indicate server issues
+    const serverIssueReasons = ['transport close', 'transport error', 'server error', 'ping timeout']
+    
+    if (serverIssueReasons.some(issue => reason.includes(issue)) || consecutiveFailures >= 2) {
+        handleServerFailure('Server disconnected: ' + reason)
+    } else {
+        // Try to reconnect first
+        setTimeout(() => {
+            if (!socket.connected && !serverFailureDetected) {
+                handleServerFailure('Unable to reconnect: ' + reason)
+            }
+        }, 3000)
+    }
+}
+
+// Handle any type of server failure
+function handleServerFailure(reason) {
+    if (!serverFailureDetected) {
+        serverFailureDetected = true
+        console.log('💥 Server failure detected:', reason)
+        showServerFailureWarning(reason)
+    }
+}
+
+// Show server failure warning with auto-refresh
+function showServerFailureWarning(reason) {
+    // Remove existing warnings
+    hideServerFailureWarning()
+    
+    console.log('🚨 Showing server failure warning:', reason)
+    
+    const warning = document.createElement('div')
+    warning.id = 'server-failure-warning'
+    warning.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.95);
+        z-index: 10001;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        animation: fadeIn 0.5s ease-out;
+    `
+    
+    warning.innerHTML = `
+        <div style="
+            background: linear-gradient(45deg, #e74c3c, #c0392b);
+            color: white;
+            padding: 40px;
+            border-radius: 15px;
+            text-align: center;
+            max-width: 500px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            border: 2px solid #ff6b6b;
+        ">
+            <div style="font-size: 48px; margin-bottom: 20px;">💥</div>
+            <h2 style="margin: 0 0 15px 0; font-size: 24px;">SERVER CRASHED / UNREACHABLE</h2>
+            <p style="margin: 0 0 20px 0; font-size: 16px; opacity: 0.9;">${reason}</p>
+            <div style="background: rgba(0,0,0,0.3); padding: 15px; border-radius: 8px; margin: 20px 0;">
+                <div style="font-size: 14px; margin-bottom: 10px;">Likely causes:</div>
+                <div style="font-size: 13px; text-align: left;">
+                    • 🚀 DDoS attack crashed the server<br>
+                    • 💾 Server ran out of memory<br>
+                    • 🌐 Network connectivity issues<br>
+                    • ⚡ Server overload and crash
+                </div>
+            </div>
+            <div style="background: rgba(255,255,0,0.2); padding: 10px; border-radius: 6px; margin: 15px 0; border: 1px solid #ffd700;">
+                <div style="font-size: 14px; font-weight: bold;">⚡ AUTOMATIC RECOVERY ACTIVE</div>
+                <div style="font-size: 12px; margin-top: 5px;">This page will automatically refresh to restore service</div>
+            </div>
+            <div style="font-size: 18px; margin: 20px 0; font-weight: bold;">
+                🔄 Auto-refreshing in <span id="failure-countdown">6</span> seconds...
+            </div>
+            <button onclick="window.location.reload()" style="
+                background: #27ae60;
+                color: white;
+                border: none;
+                padding: 12px 24px;
+                border-radius: 6px;
+                font-size: 16px;
+                font-weight: bold;
+                cursor: pointer;
+                margin-right: 10px;
+                box-shadow: 0 3px 10px rgba(39,174,96,0.3);
+            ">🔄 Refresh Now</button>
+            <button onclick="hideServerFailureWarning(); setTimeout(() => showServerFailureWarning('${reason}'), 10000)" style="
+                background: transparent;
+                color: white;
+                border: 2px solid white;
+                padding: 10px 20px;
+                border-radius: 6px;
+                font-size: 14px;
+                cursor: pointer;
+            ">Wait 10s</button>
+        </div>
+    `
+    
+    // Add fade in animation
+    if (!document.getElementById('fade-animation-style')) {
+        const style = document.createElement('style')
+        style.id = 'fade-animation-style'
+        style.textContent = `
+            @keyframes fadeIn {
+                from { opacity: 0; transform: scale(0.8); }
+                to { opacity: 1; transform: scale(1); }
+            }
+        `
+        document.head.appendChild(style)
+    }
+    
+    document.body.appendChild(warning)
+    
+    // Start countdown with shorter timer (6 seconds instead of 10)
+    startFailureRefreshCountdown(6)
+    
+    // Play warning sound
+    try {
+        const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFAlGn+Dmt2AeAg==')
+        audio.volume = 0.3
+        audio.play().catch(() => {})
+    } catch (e) {}
+}
+
+// Hide server failure warning
+function hideServerFailureWarning() {
+    const warning = document.getElementById('server-failure-warning')
+    if (warning) {
+        warning.remove()
+    }
+    clearTimeout(autoRefreshTimer)
+}
+
+// Failure refresh countdown
+function startFailureRefreshCountdown(seconds) {
+    clearTimeout(autoRefreshTimer)
+    let countdown = seconds
+    
+    const countdownElement = document.getElementById('failure-countdown')
+    if (countdownElement) {
+        countdownElement.textContent = countdown
+    }
+    
+    const countdownInterval = setInterval(() => {
+        countdown--
+        const element = document.getElementById('failure-countdown')
+        if (element) {
+            element.textContent = countdown
+        }
+        
+        if (countdown <= 0) {
+            clearInterval(countdownInterval)
+            console.log('🔄 Auto-refreshing due to server failure...')
+            window.location.reload()
+        }
+    }, 1000)
+    
+    autoRefreshTimer = setTimeout(() => {
+        clearInterval(countdownInterval)
+        window.location.reload()
+    }, seconds * 1000)
+}
+
+// Create real-time metrics display
+function createMetricsDisplay() {
+    let metricsDisplay = document.getElementById('ddos-metrics-display')
+    if (!metricsDisplay) {
+        metricsDisplay = document.createElement('div')
+        metricsDisplay.id = 'ddos-metrics-display'
+        metricsDisplay.style.cssText = `
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 10px;
+            border-radius: 8px;
+            font-family: monospace;
+            font-size: 12px;
+            z-index: 9999;
+            min-width: 200px;
+        `
+        document.body.appendChild(metricsDisplay)
+    }
+    return metricsDisplay
+}
+
+// Update metrics display
+function updateMetricsDisplay(metrics) {
+    const display = createMetricsDisplay()
+    const statusColor = metrics.isUnderAttack ? '#ff4757' : (metrics.rps > 50 ? '#ffa502' : '#2ed573')
+    const statusText = metrics.isUnderAttack ? '🚨 UNDER ATTACK' : (metrics.rps > 50 ? '⚠️ HIGH LOAD' : '✅ NORMAL')
+    
+    display.innerHTML = `
+        <div style="color: ${statusColor}; font-weight: bold; margin-bottom: 5px;">
+            ${statusText}
+        </div>
+        <div>RPS: <span style="color: ${statusColor}">${metrics.rps}</span></div>
+        <div>Threat: <span style="color: ${statusColor}">${metrics.threatLevel.toUpperCase()}</span></div>
+        <div style="font-size: 10px; margin-top: 5px; opacity: 0.7;">
+            Updated: ${new Date().toLocaleTimeString()}
+        </div>
+    `
+}
+
+// Socket event listeners for attack detection
+socket.on('ddos-attack-detected', (data) => {
+    console.log('🚨 DDoS Attack Detected:', data)
+    createAttackWarning(data)
+    
+    // Play alert sound if possible
+    try {
+        const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmEaAzSKzO+6bywEhJC+09tySUq7h9LydSg=')
+        audio.volume = 0.3
+        audio.play().catch(() => {}) // Ignore if audio fails
+    } catch (e) {}
+})
+
+socket.on('ddos-attack-stopped', (data) => {
+    console.log('✅ DDoS Attack Stopped:', data)
+    isServerUnderAttack = false
+    showAttackStopped(data)
+    
+    // Auto-refresh after attack stops
+    clearTimeout(autoRefreshTimer)
+    autoRefreshTimer = setTimeout(() => {
+        console.log('🔄 Auto-refreshing page after attack ended...')
+        window.location.reload()
+    }, 3000) // 3 second delay
+})
+
+// Auto-refresh on connection issues during attacks
+socket.on('disconnect', () => {
+    if (isServerUnderAttack) {
+        console.log('🔌 Connection lost during attack - auto-refreshing...')
+        clearTimeout(autoRefreshTimer)
+        autoRefreshTimer = setTimeout(() => {
+            window.location.reload()
+        }, 2000)
+    }
+})
+
+socket.on('connect_error', () => {
+    if (isServerUnderAttack) {
+        console.log('❌ Connection error during attack - auto-refreshing...')
+        clearTimeout(autoRefreshTimer)
+        autoRefreshTimer = setTimeout(() => {
+            window.location.reload()
+        }, 3000)
+    }
+})
+
+// Initialize server monitoring when page loads
+document.addEventListener('DOMContentLoaded', () => {
+    startServerMonitoring()
+    console.log('🔍 Server monitoring started')
+    
+    // Add global error monitoring for additional failure detection
+    window.addEventListener('error', (event) => {
+        if (event.error && (event.error.message.includes('fetch') || event.error.message.includes('network'))) {
+            consecutiveFailures++
+            console.log('🌐 Network error detected:', event.error.message)
+            if (consecutiveFailures >= 2 && !serverFailureDetected) {
+                handleServerFailure('Network error: ' + event.error.message)
+            }
+        }
+    })
+    
+    // Monitor for unhandled promise rejections (often network related)
+    window.addEventListener('unhandledrejection', (event) => {
+        if (event.reason && event.reason.toString().includes('fetch')) {
+            consecutiveFailures++
+            console.log('🌐 Fetch promise rejected:', event.reason)
+            if (consecutiveFailures >= 1 && !serverFailureDetected) {
+                handleServerFailure('Fetch failed: ' + event.reason)
+            }
+        }
+    })
+    
+    // Monitor page visibility - if user comes back and server is down, refresh immediately
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden && serverFailureDetected) {
+            console.log('👁️ User returned to page with server failure - refreshing...')
+            setTimeout(() => window.location.reload(), 1000)
+        }
+    })
+})
+
+// Also start monitoring if DOM is already loaded
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', startServerMonitoring)
+} else {
+    startServerMonitoring()
+}
+
+// Ping for keeping connection alive
+socket.on('ping', (data) => {
+    socket.emit('pong', data)
+    lastServerResponse = Date.now()
 })
 
 const pingConfig = {

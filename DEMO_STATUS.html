@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DDoS Attack Demo - Real-time Warnings & Auto-refresh</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            margin: 0;
+            padding: 20px;
+            color: white;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            text-align: center;
+        }
+        .demo-section {
+            background: rgba(255,255,255,0.1);
+            border-radius: 15px;
+            padding: 30px;
+            margin: 20px 0;
+            backdrop-filter: blur(10px);
+        }
+        .attack-button {
+            background: linear-gradient(45deg, #ff4757, #ff3838);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 10px;
+            font-size: 18px;
+            font-weight: bold;
+            cursor: pointer;
+            margin: 10px;
+            transition: all 0.3s ease;
+        }
+        .attack-button:hover {
+            transform: scale(1.05);
+            box-shadow: 0 5px 20px rgba(255,71,87,0.4);
+        }
+        .status {
+            background: rgba(0,0,0,0.3);
+            padding: 15px;
+            border-radius: 10px;
+            margin: 20px 0;
+            font-family: monospace;
+        }
+        .feature-list {
+            text-align: left;
+            background: rgba(0,0,0,0.2);
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+        }
+        .feature-list li {
+            margin: 10px 0;
+            padding-left: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚨 DDoS Attack Demo & Real-time Warning System</h1>
+        
+        <div class="demo-section">
+            <h2>📋 Demo Features Implemented</h2>
+            <ul class="feature-list">
+                <li>✅ <strong>Aggressive Frontend Monitoring:</strong> Client checks server every 3 seconds</li>
+                <li>✅ <strong>Multiple Failure Detection:</strong> WebSocket + HTTP health checks + error monitoring</li>
+                <li>✅ <strong>Fast Auto-refresh:</strong> Page refreshes 6 seconds after server failure detected</li>
+                <li>✅ <strong>Independent Operation:</strong> Works even when server is completely crashed</li>
+                <li>✅ <strong>Network Error Detection:</strong> Catches fetch failures and connection errors</li>
+                <li>✅ <strong>Timeout Detection:</strong> 8-second timeout for unresponsive server</li>
+                <li>✅ <strong>HTTP Health Endpoint:</strong> /health endpoint for independent server checking</li>
+                <li>✅ <strong>Visibility Monitoring:</strong> Auto-refresh when user returns to failed page</li>
+                <li>✅ <strong>Sound Alerts:</strong> Audio notifications when failures are detected</li>
+                <li>✅ <strong>Global Error Handling:</strong> Catches all types of network failures</li>
+            </ul>
+        </div>
+
+        <div class="demo-section">
+            <h2>🎯 How to Test the System</h2>
+            <p><strong>Step 1:</strong> Open the chess game in a browser: <a href="http://127.0.0.1:3000" target="_blank" style="color: #ffd700;">http://127.0.0.1:3000</a></p>
+            <p><strong>Step 2:</strong> Run one of the attack scripts to test warnings:</p>
+            
+            <div style="background: rgba(0,0,0,0.4); padding: 15px; border-radius: 8px; margin: 20px 0; text-align: left;">
+                <h4>🔥 Powerful Attack (Server will crash):</h4>
+                <code>node ddos_attack.js</code>
+                <p><em>This will trigger warnings and then crash the server, showing server failure popup with auto-refresh.</em></p>
+                
+                <h4>💡 Light Attack (For testing warnings):</h4>
+                <code>node light_ddos_attack.js</code>
+                <p><em>This generates moderate load to trigger warnings without crashing the server.</em></p>
+            </div>
+        </div>
+
+        <div class="demo-section">
+            <h2>⚙️ Current Server Settings (Vulnerable Mode)</h2>
+            <div class="status">
+                <div><strong>🔥 SERVER MADE VULNERABLE TO CRASH:</strong></div>
+                <div>• Attack detection DISABLED</div>
+                <div>• Memory leaks added every 30 requests</div>
+                <div>• Processing delays under load</div>
+                <div>• Forced crash after 1500 requests</div>
+                <div>• No protective measures active</div>
+                <br>
+                <div><strong>Client-side monitoring ACTIVE:</strong></div>
+                <div>• Server failure detection</div>
+                <div>• Auto-refresh on crash: 10 seconds</div>
+                <div>• Connection monitoring</div>
+                <div>• Real-time crash warnings</div>
+            </div>
+        </div>
+
+        <div class="demo-section">
+            <h2>🚨 What You'll See During Tests</h2>
+            <ol style="text-align: left;">
+                <li><strong>No Server Warnings:</strong> Server won't detect attacks (disabled)</li>
+                <li><strong>Memory Leaks:</strong> Server logs showing memory pressure</li>
+                <li><strong>Server Crash:</strong> Server will crash under heavy load</li>
+                <li><strong>Client Detection:</strong> Browser detects server failure</li>
+                <li><strong>Failure Popup:</strong> Red crash warning with 10-second countdown</li>
+                <li><strong>Auto-refresh:</strong> Page automatically reloads after crash</li>
+            </ol>
+        </div>
+
+        <div class="demo-section">
+            <h2>📊 Monitoring</h2>
+            <p>Watch the browser console and server terminal for real-time logs showing:</p>
+            <ul style="text-align: left;">
+                <li>Traffic analysis (RPS/RPM measurements)</li>
+                <li>Attack detection triggers</li>
+                <li>Socket event emissions</li>
+                <li>Client connection status</li>
+                <li>Auto-refresh triggers</li>
+            </ul>
+        </div>
+
+        <div style="margin-top: 40px; padding: 20px; background: rgba(0,255,0,0.1); border-radius: 10px;">
+            <h3>✅ System Ready!</h3>
+            <p>The chess server is running with comprehensive DDoS protection, real-time warnings, and auto-refresh functionality.</p>
+            <p><strong>Open the chess game and run an attack to see the system in action!</strong></p>
+        </div>
+    </div>
+</body>
+</html>

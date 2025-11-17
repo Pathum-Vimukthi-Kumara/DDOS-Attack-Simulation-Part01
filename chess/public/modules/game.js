@@ -151,16 +151,21 @@ export function Game(gMode, playerColor, board, socket, time, puzzle, solvedCall
     function setMoveTime(newMoveTime) {
         moveTime = Math.max(1, newMoveTime)
     }
-    // const stockfish = new Worker(`${location.pathname === '/' ? '' : '.'}./lc0/lc0.js`)
-    const stockfish = new Worker(`${location.pathname === '/' ? '' : '.'}./stockfish/stockfish.js`)
+    // Always load Stockfish from the root-level /stockfish path so it works
+    // from nested routes like /puzzle as well as from /. The server maps this
+    // URL to public/stockfish.
+    const stockfish = new Worker(`/stockfish/stockfish.js`)
     let uciok = false
     let nnueLoaded = false
     // Some Stockfish builds don't print "Load eval file success: 1". Add a
-    // safe fallback so the UI doesn't spin forever.
+    // safe fallback so the UI doesn't spin forever. Use a shorter fallback
+    // in puzzle mode where NNUE is disabled for faster startup.
     let engineReadyFallback = setTimeout(() => {
+        // Fallback: mark engine ready even if specific banners are missing
         nnueLoaded = true
+        uciok = true
         checkLoading()
-    }, 3000)
+    }, gMode === gamemode.puzzle ? 600 : 2000)
 
     let isClicking = false
 
@@ -872,7 +877,8 @@ export function Game(gMode, playerColor, board, socket, time, puzzle, solvedCall
 
     //!STOCKFISH
     stockfish.onmessage = ({ data }) => {
-        if (data === 'uciok') uciok = true
+        const line = (data + '').toLowerCase()
+        if (line.includes('uciok')) uciok = true
         // Cover multiple possible readiness strings from different builds
         if (
             data === 'Load eval file success: 1' ||
@@ -1131,7 +1137,14 @@ export function Game(gMode, playerColor, board, socket, time, puzzle, solvedCall
     }
 
     stockfish.postMessage('uci')
-    stockfish.postMessage('setoption name Use NNUE value true')
+    if (gMode === gamemode.puzzle) {
+        // Faster startup for puzzles: disable NNUE model load
+        stockfish.postMessage('setoption name Use NNUE value false')
+        nnueLoaded = true
+        checkLoading()
+    } else {
+        stockfish.postMessage('setoption name Use NNUE value true')
+    }
     stockfish.postMessage('isready')
     function setSkillLevel(level, time) {
         skillLevel = level

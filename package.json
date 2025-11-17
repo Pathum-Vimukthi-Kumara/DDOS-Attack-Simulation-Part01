@@ -2,12 +2,16 @@
   "name": "ddos-simulator",
   "version": "1.0.0",
   "description": "DDoS Attack Simulator for Educational Purposes",
-  "main": "ddos_simulator.js",
+  "main": "ddos_attack.js",
   "type": "module",
   "scripts": {
-    "attack": "node ddos_simulator.js",
+    "attack": "node ddos_attack.js --target http://127.0.0.1:3000 --type crash --workers 12 --rps 1000 --duration 60",
+    "attack-light": "node ddos_attack.js --target http://127.0.0.1:3000 --type mixed --workers 4 --rps 200 --duration 30",
+    "attack-crash": "node ddos_attack.js --target http://127.0.0.1:3000 --type crash --workers 16 --rps 2000 --duration 120",
+    "attack-memory": "node ddos_attack.js --target http://127.0.0.1:3000 --type memory --workers 8 --rps 100 --duration 60",
+    "launcher": "node attack_launcher.js",
     "test-server": "cd chess && npm start",
-    "demo": "echo 'Starting DDoS demonstration...' && npm run attack"
+    "demo": "echo 'Starting ENHANCED DDoS Attack...' && npm run attack"
   },
   "dependencies": {
     "socket.io-client": "^4.7.2"
