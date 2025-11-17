@@ -17,11 +17,29 @@ const __dirname = path.resolve()
 
 const app = express()
 const httpServer = createServer(app)
-const io = new Server(httpServer)
 
+// Configure Socket.IO with CORS support for cross-VM access
+const io = new Server(httpServer, {
+    cors: {
+        origin: "*", // Allow all origins for demo purposes
+        methods: ["GET", "POST"],
+        credentials: true
+    }
+})
+
+// Add CORS headers for HTTP requests
 app.use((req, res, next) => {
-    // Security headers removed to fix loading issues in development
-    // Attack monitoring disabled - let server crash naturally
+    res.header('Access-Control-Allow-Origin', '*')
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
+    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization')
+    res.header('Access-Control-Allow-Credentials', 'true')
+    
+    // Handle preflight requests
+    if (req.method === 'OPTIONS') {
+        res.sendStatus(200)
+        return
+    }
+    
     next()
 })
 
@@ -32,21 +50,21 @@ let memoryLeakArray = []
 app.use((req, res, next) => {
     requestCount++
     
-    // Create memory pressure during high load
+    // Add memory leak every 30 requests to cause crashes
     if (requestCount % 30 === 0) {
-        // Add memory leaks to cause crashes
-        for (let i = 0; i < 2000; i++) {
-            memoryLeakArray.push(new Array(1000).fill('crash-data-' + Math.random() + Date.now()))
-        }
+        // Create memory leak
+        const leakData = new Array(10000).fill('memory-leak-data-to-crash-server-during-ddos-attack')
+        memoryLeakArray.push(leakData)
         console.log(`💀 Memory leak added. Total requests: ${requestCount}`)
-    }
-    
-    // Simulate processing delay under load
-    if (requestCount > 100) {
-        const delay = Math.random() * 100
-        const start = Date.now()
-        while (Date.now() - start < delay) {
-            // Busy wait to simulate server strain
+        
+        // If memory pressure is too high, trigger garbage collection issues
+        if (memoryLeakArray.length > 50) {
+            // Simulate memory pressure by creating circular references
+            for (let i = 0; i < 100; i++) {
+                const obj = { data: leakData, ref: null }
+                obj.ref = obj // Circular reference
+                memoryLeakArray.push(obj)
+            }
         }
     }
     
