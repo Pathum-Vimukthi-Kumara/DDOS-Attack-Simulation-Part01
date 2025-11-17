@@ -303,6 +303,12 @@ function startAutoRefreshCountdown(seconds) {
 
 // Server monitoring and failure detection
 function startServerMonitoring() {
+    // Prevent multiple monitoring intervals
+    if (serverMonitorInterval) {
+        console.log('🔍 Server monitoring already active')
+        return
+    }
+    
     console.log('🔍 Starting aggressive frontend server monitoring...')
     
     // Monitor socket connection status
@@ -431,6 +437,13 @@ function handleServerFailure(reason) {
     if (!serverFailureDetected) {
         serverFailureDetected = true
         console.log('💥 Server failure detected:', reason)
+        
+        // Start monitoring if not already active
+        if (!serverMonitorInterval) {
+            startServerMonitoring()
+            console.log('🔍 Server monitoring activated due to failure detection')
+        }
+        
         showServerFailureWarning(reason)
     }
 }
@@ -666,10 +679,26 @@ socket.on('connect_error', () => {
     }
 })
 
-// Initialize server monitoring when page loads
+// Initialize basic connection monitoring (not aggressive failure detection)
 document.addEventListener('DOMContentLoaded', () => {
-    startServerMonitoring()
-    console.log('🔍 Server monitoring started')
+    // Only basic connection handling - no aggressive monitoring
+    console.log('🔍 Basic connection monitoring initialized (no failure detection)')
+    
+    // Add basic socket event handlers for connection status
+    socket.on('connect', () => {
+        console.log('✅ Connected to server')
+        lastServerResponse = Date.now()
+        serverFailureDetected = false
+        hideServerFailureWarning()
+    })
+    
+    socket.on('disconnect', (reason) => {
+        console.log('🔌 Disconnected from server:', reason)
+        // Only trigger failure detection if disconnect is unexpected
+        if (reason === 'transport close' || reason === 'transport error') {
+            handleServerFailure('Connection lost: ' + reason)
+        }
+    })
     
     // Add global error monitoring for additional failure detection
     window.addEventListener('error', (event) => {
@@ -702,12 +731,12 @@ document.addEventListener('DOMContentLoaded', () => {
     })
 })
 
-// Also start monitoring if DOM is already loaded
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', startServerMonitoring)
-} else {
-    startServerMonitoring()
-}
+// Monitoring only starts during attacks - not automatically
+// if (document.readyState === 'loading') {
+//     document.addEventListener('DOMContentLoaded', startServerMonitoring)
+// } else {
+//     startServerMonitoring()
+// }
 
 // Ping for keeping connection alive
 socket.on('ping', (data) => {
