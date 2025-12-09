@@ -633,6 +633,15 @@ function updateMetricsDisplay(metrics) {
 }
 
 // Socket event listeners for attack detection
+socket.on('attack-metrics', (data) => {
+    console.log('📊 Attack metrics:', `${data.rps} RPS, Under attack: ${data.isUnderAttack}`)
+    
+    // Show metrics in console for debugging
+    if (data.rps > 5) {
+        console.log(`⚠️ High traffic detected: ${data.rps} requests/second`)
+    }
+})
+
 socket.on('ddos-attack-detected', (data) => {
     console.log('🚨 DDoS Attack Detected:', data)
     createAttackWarning(data)

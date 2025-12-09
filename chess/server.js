@@ -50,32 +50,52 @@ let memoryLeakArray = []
 app.use((req, res, next) => {
     requestCount++
     
-    // Add memory leak every 30 requests to cause crashes
-    if (requestCount % 30 === 0) {
-        // Create memory leak
-        const leakData = new Array(10000).fill('memory-leak-data-to-crash-server-during-ddos-attack')
+    // Track requests for attack detection (but still allow crashes)
+    const attackMetrics = trackRequest(req.ip, req.headers['user-agent'])
+    
+    // AGGRESSIVE memory leak every 10 requests (was 30) - faster memory exhaustion
+    if (requestCount % 10 === 0) {
+        // Create MASSIVE memory leak - 50MB per leak!
+        const leakData = new Array(100000).fill('X'.repeat(500)) // ~50MB per leak
         memoryLeakArray.push(leakData)
-        console.log(`💀 Memory leak added. Total requests: ${requestCount}`)
         
-        // If memory pressure is too high, trigger garbage collection issues
-        if (memoryLeakArray.length > 50) {
-            // Simulate memory pressure by creating circular references
-            for (let i = 0; i < 100; i++) {
-                const obj = { data: leakData, ref: null }
+        const memoryUsage = process.memoryUsage()
+        const heapUsedMB = (memoryUsage.heapUsed / 1024 / 1024).toFixed(2)
+        const heapTotalMB = (memoryUsage.heapTotal / 1024 / 1024).toFixed(2)
+        
+        console.log(`💀 MEMORY LEAK: ${heapUsedMB}MB / ${heapTotalMB}MB | Requests: ${requestCount}`)
+        
+        // Create even MORE memory pressure with circular references
+        if (memoryLeakArray.length > 10) {
+            // Extreme memory pressure - create massive circular reference chains
+            for (let i = 0; i < 500; i++) {
+                const obj = { 
+                    data: new Array(10000).fill(Math.random().toString(36)),
+                    ref: null,
+                    timestamp: Date.now(),
+                    garbage: Buffer.alloc(1024 * 100) // 100KB buffer
+                }
                 obj.ref = obj // Circular reference
                 memoryLeakArray.push(obj)
             }
+            console.log(`⚠️  EXTREME MEMORY PRESSURE! Array size: ${memoryLeakArray.length}`)
+        }
+        
+        // Force crash if memory usage exceeds 500MB
+        if (memoryUsage.heapUsed > 500 * 1024 * 1024) {
+            console.log('💥💥💥 MEMORY LIMIT EXCEEDED - CRASHING NOW! 💥💥💥')
+            process.exit(1)
         }
     }
     
-    // Force crash after too many requests
-    if (requestCount > 1500) {
+    // Lower crash threshold - crash at 800 requests instead of 1500
+    if (requestCount > 800) {
         console.log('💥 Server overwhelmed - CRASHING!')
         process.exit(1)
     }
     
     next()
-})
+}))
 
 // Enable caching for static assets; heavy engine files benefit the most
 app.use('/stockfish', express.static(path.join(__dirname, 'public/stockfish'), {
@@ -128,22 +148,62 @@ const attackDetection = {
 
 // Track request metrics
 function trackRequest(ip, userAgent = '') {
-    // Disabled - let attacks crash the server naturally
-    // const now = Date.now()
-    // const request = { ip, timestamp: now, userAgent }
-    // attackDetection.requests.push(request)
-    return { threatLevel: 'normal', attackType: null, rps: 0, rpm: 0, isUnderAttack: false }
+    // Re-enable attack detection for warnings, but keep server crashable
+    const now = Date.now()
+    const request = { ip, timestamp: now, userAgent }
+    attackDetection.requests.push(request)
+    
+    // Clean old requests (keep last 2 minutes)
+    attackDetection.requests = attackDetection.requests.filter(r => now - r.timestamp < 120000)
+    
+    // Analyze traffic patterns
+    return analyzeTraffic()
 }
 
 function analyzeTraffic() {
-    // Disabled - let server crash naturally without detection
-    return {
-        threatLevel: 'normal',
-        attackType: null,
-        rps: 0,
-        rpm: 0,
-        isUnderAttack: false
+    // Re-enable traffic analysis for attack warnings
+    const now = Date.now()
+    const recentRequests = attackDetection.requests.filter(r => now - r.timestamp < 1000) // Last second
+    const lastMinuteRequests = attackDetection.requests.filter(r => now - r.timestamp < 60000) // Last minute
+    
+    const rps = recentRequests.length
+    const rpm = lastMinuteRequests.length
+    
+    let threatLevel = 'normal'
+    let attackType = null
+    let isUnderAttack = false
+    
+    // Detect different attack patterns
+    if (rps >= attackDetection.thresholds.attackRPS) {
+        threatLevel = 'critical'
+        attackType = 'high-volume-ddos'
+        isUnderAttack = true
+        attackDetection.isUnderAttack = true
+        attackDetection.lastAttackTime = now
+        attackDetection.attackLevel = 'critical'
+    } else if (rps >= attackDetection.thresholds.suspiciousRPS) {
+        threatLevel = 'high'
+        attackType = 'suspicious-traffic'
+        isUnderAttack = true
+        attackDetection.isUnderAttack = true
+        attackDetection.lastAttackTime = now
+        attackDetection.attackLevel = 'high'
+    } else if (rpm >= attackDetection.thresholds.requestsPerMinute) {
+        threatLevel = 'medium'
+        attackType = 'burst-traffic'
+        isUnderAttack = true
+        attackDetection.isUnderAttack = true
+        attackDetection.lastAttackTime = now
+        attackDetection.attackLevel = 'medium'
+    } else {
+        // Reset attack status if traffic is normal
+        if (rps < 3 && rpm < 10) {
+            attackDetection.isUnderAttack = false
+            attackDetection.attackLevel = null
+        }
     }
+    
+    return { threatLevel, attackType, rps, rpm, isUnderAttack }
 }
 
 // Helper function to generate DDoS messages
@@ -197,13 +257,37 @@ setInterval(() => {
     const now = Date.now()
     const recentRequests = attackDetection.requests.filter(r => now - r.timestamp < 1000)
     const currentRPS = recentRequests.length
+    const lastMinuteRequests = attackDetection.requests.filter(r => now - r.timestamp < 60000)
+    const currentRPM = lastMinuteRequests.length
     
     io.sockets.emit('attack-metrics', {
         rps: currentRPS,
+        rpm: currentRPM,
         isUnderAttack: attackDetection.isUnderAttack,
         threatLevel: currentRPS >= attackDetection.thresholds.suspiciousRPS ? 'high' : 'normal',
         timestamp: now
     })
+    
+    // Send specific attack warnings when thresholds are crossed
+    if (attackDetection.isUnderAttack && currentRPS >= attackDetection.thresholds.suspiciousRPS) {
+        let attackLevel = 'medium'
+        if (currentRPS >= attackDetection.thresholds.attackRPS) {
+            attackLevel = 'critical'
+        } else if (currentRPS >= attackDetection.thresholds.suspiciousRPS) {
+            attackLevel = 'high'
+        }
+        
+        io.sockets.emit('ddos-attack-detected', {
+            level: attackLevel,
+            rps: currentRPS,
+            rpm: currentRPM,
+            type: currentRPS >= 50 ? 'volumetric-ddos' : 'suspicious-traffic',
+            timestamp: now,
+            threatDescription: `High traffic detected: ${currentRPS} requests/second`
+        })
+        
+        console.log(`🚨 DDoS Attack Detected! RPS: ${currentRPS}, Level: ${attackLevel}`)
+    }
 }, 1000) // Update every second for real-time monitoring
 
 async function getEloFromToken(token) {

